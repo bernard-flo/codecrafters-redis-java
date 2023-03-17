@@ -1,10 +1,42 @@
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Scanner;
 
 public class Main {
 
+
+  private static void handlePing(RedisConnection connection, String line) throws IOException {
+    connection.writeSimpleString("PONG");
+  }
+
+  private static void handleClientSocket(Socket socket) throws IOException {
+    Scanner scanner = new Scanner(socket.getInputStream());
+    RedisConnection connection = new RedisConnection(socket.getOutputStream());
+
+    while (scanner.hasNext()) {
+      String line = scanner.nextLine();
+      System.out.println("line: " + line);
+      if (line.startsWith("ping")) {
+        handlePing(connection, line);
+      } else if (line.startsWith("DOCS")) {
+        connection.writeSimpleString("");
+      }
+    }
+
+    socket.close();
+    System.out.println("Done");
+  }
+
   public static void main(String[] args){
+    boolean debug;
+    if (args.length >= 1) {
+      debug = true;
+    } else {
+      debug = false;
+    }
+
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     System.out.println("Logs from your program will appear here!");
 
@@ -15,15 +47,15 @@ public class Main {
     try {
       serverSocket = new ServerSocket(port);
       serverSocket.setReuseAddress(true);
-      // Wait for connection from client.
-      clientSocket = serverSocket.accept();
 
-      byte[] buffer = new byte[10];
-
-      int read = clientSocket.getInputStream().read(buffer);
-      System.out.println(read + " " + new String(buffer));
-      clientSocket.getOutputStream().write("+PONG\r\n".getBytes());
-
+      while (true) {
+        // Wait for connection from client.
+        clientSocket = serverSocket.accept();
+        handleClientSocket(clientSocket);
+        if (debug == false) {
+          break;
+        }
+      }
 
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
@@ -37,4 +69,17 @@ public class Main {
       }
     }
   }
+
+  private static class RedisConnection {
+    private final OutputStream outputStream;
+    public RedisConnection(OutputStream outputStream) {
+      this.outputStream = outputStream;
+    }
+
+    public void writeSimpleString(String simpleString) throws IOException {
+      String line = "+" + simpleString + "\r\n";
+      outputStream.write(line.getBytes());
+    }
+  }
+
 }
