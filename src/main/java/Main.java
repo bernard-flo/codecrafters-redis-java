@@ -23,14 +23,15 @@ public class Main {
 
       while (scanner.hasNext()) {
         String line = scanner.nextLine();
+        String rowerCaseLine = line.toLowerCase();
         System.out.println("line: " + line);
-        if (line.startsWith("ping")) {
+        if (rowerCaseLine.startsWith("ping")) {
           handlePing(connection);
-        } else if (line.startsWith("ECHO")) {
+        } else if (rowerCaseLine.startsWith("echo")) {
           scanner.nextLine();
           String arg = scanner.nextLine();
           handleEcho(connection, arg);
-        } else if (line.startsWith("DOCS")) {
+        } else if (rowerCaseLine.startsWith("docs")) {
           connection.writeSimpleString("");
         }
       }
