@@ -4,9 +4,12 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Scanner;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public class Main {
 
+  private static ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
 
   private static void handlePing(RedisConnection connection) throws IOException {
     connection.writeSimpleString("PONG");
@@ -14,6 +17,16 @@ public class Main {
 
   private static void handleEcho(RedisConnection connection, String arg) throws IOException {
     connection.writeBulkString(arg);
+  }
+
+  private static void handleSet(RedisConnection connection, String key, String value) throws IOException {
+    map.put(key, value);
+    connection.writeSimpleString("OK");
+  }
+
+  private static void handleGet(RedisConnection connection, String key) throws IOException {
+    String value = map.get(key);
+    connection.writeBulkString(value);
   }
 
   private static void handleClientSocket(Socket socket) {
@@ -31,6 +44,16 @@ public class Main {
           scanner.nextLine();
           String arg = scanner.nextLine();
           handleEcho(connection, arg);
+        } else if (rowerCaseLine.startsWith("set")) {
+          scanner.nextLine();
+          String key = scanner.nextLine();
+          scanner.nextLine();
+          String value = scanner.nextLine();
+          handleSet(connection, key, value);
+        } else if (rowerCaseLine.startsWith("get")) {
+          scanner.nextLine();
+          String key = scanner.nextLine();
+          handleGet(connection, key);
         } else if (rowerCaseLine.startsWith("docs")) {
           connection.writeSimpleString("");
         }
