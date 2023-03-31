@@ -2,61 +2,59 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Scanner;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.BiConsumer;
 
 public class Main {
 
   private static ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
 
-  private static void handlePing(RedisConnection connection) throws IOException {
+  private static void handleCommand(RedisConnection connection, List<String> commandLine) {
+    connection.writeSimpleString("");
+  }
+
+  private static void handlePing(RedisConnection connection, List<String> commandLine) {
     connection.writeSimpleString("PONG");
   }
 
-  private static void handleEcho(RedisConnection connection, String arg) throws IOException {
+  private static void handleEcho(RedisConnection connection, List<String> commandLine) {
+    String arg = commandLine.get(1);
     connection.writeBulkString(arg);
   }
 
-  private static void handleSet(RedisConnection connection, String key, String value) throws IOException {
+  private static void handleSet(RedisConnection connection, List<String> commandLine) {
+    String key = commandLine.get(1);
+    String value = commandLine.get(2);
     map.put(key, value);
     connection.writeSimpleString("OK");
   }
 
-  private static void handleGet(RedisConnection connection, String key) throws IOException {
+  private static void handleGet(RedisConnection connection, List<String> commandLine) {
+    String key = commandLine.get(1);
     String value = map.get(key);
     connection.writeBulkString(value);
   }
 
   private static void handleClientSocket(Socket socket) {
-    try {
-      Scanner scanner = new Scanner(socket.getInputStream());
-      RedisConnection connection = new RedisConnection(socket.getOutputStream());
+    Map<String, BiConsumer<RedisConnection, List<String>>> commandHandler = new HashMap<>();
+    commandHandler.put("command", Main::handleCommand);
+    commandHandler.put("ping", Main::handlePing);
+    commandHandler.put("echo", Main::handleEcho);
+    commandHandler.put("set", Main::handleSet);
+    commandHandler.put("get", Main::handleGet);
 
-      while (scanner.hasNext()) {
-        String line = scanner.nextLine();
-        String rowerCaseLine = line.toLowerCase();
-        System.out.println("line: " + line);
-        if (rowerCaseLine.startsWith("ping")) {
-          handlePing(connection);
-        } else if (rowerCaseLine.startsWith("echo")) {
-          scanner.nextLine();
-          String arg = scanner.nextLine();
-          handleEcho(connection, arg);
-        } else if (rowerCaseLine.startsWith("set")) {
-          scanner.nextLine();
-          String key = scanner.nextLine();
-          scanner.nextLine();
-          String value = scanner.nextLine();
-          handleSet(connection, key, value);
-        } else if (rowerCaseLine.startsWith("get")) {
-          scanner.nextLine();
-          String key = scanner.nextLine();
-          handleGet(connection, key);
-        } else if (rowerCaseLine.startsWith("docs")) {
-          connection.writeSimpleString("");
-        }
+    try {
+
+      RedisConnection connection = new RedisConnection(socket);
+
+      while (connection.hasNext()) {
+        List<String> commandLine = connection.readArray();
+        System.out.println("commandLine: " + commandLine);
+        String command = commandLine.get(0).toLowerCase();
+        commandHandler.get(command).accept(connection, commandLine);
       }
 
       socket.close();
@@ -96,20 +94,41 @@ public class Main {
   private static class RedisConnection {
     private static final String CRLF = "\r\n";
 
+    private final Scanner scanner;
     private final OutputStream outputStream;
-    public RedisConnection(OutputStream outputStream) {
-      this.outputStream = outputStream;
+    public RedisConnection(Socket socket) throws IOException {
+      this.scanner = new Scanner(socket.getInputStream());
+      this.outputStream = socket.getOutputStream();
     }
 
-    public void write(String line) throws IOException {
-      outputStream.write(line.getBytes());
+    public boolean hasNext() {
+      return scanner.hasNext();
     }
 
-    public void writeSimpleString(String simpleString) throws IOException {
+    public List<String> readArray() {
+      String firstLine = scanner.nextLine();
+      int size = Integer.parseInt(firstLine.substring(1));
+      List<String> result = new ArrayList<>(size);
+      for (int i = 0; i < size; i++) {
+        scanner.nextLine();
+        result.add(scanner.nextLine());
+      }
+      return result;
+    }
+
+    public void write(String line) {
+      try {
+        outputStream.write(line.getBytes());
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
+
+    public void writeSimpleString(String simpleString) {
       write("+" + simpleString + CRLF);
     }
 
-    public void writeBulkString(String bulkString) throws IOException {
+    public void writeBulkString(String bulkString) {
       write("$" + bulkString.length() + CRLF + bulkString + CRLF);
     }
 
