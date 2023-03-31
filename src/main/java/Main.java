@@ -10,7 +10,7 @@ import java.util.function.BiConsumer;
 
 public class Main {
 
-  private static ConcurrentMap<String, String> map = new ConcurrentHashMap<>();
+  private static ExpiringMap map = new ExpiringMap();
 
   private static void handleCommand(RedisConnection connection, List<String> commandLine) {
     connection.writeSimpleString("");
@@ -28,14 +28,22 @@ public class Main {
   private static void handleSet(RedisConnection connection, List<String> commandLine) {
     String key = commandLine.get(1);
     String value = commandLine.get(2);
-    map.put(key, value);
+    Long expiryMs = null;
+    if (commandLine.size() == 5 && commandLine.get(3).equalsIgnoreCase("px")) {
+      expiryMs = Long.parseLong(commandLine.get(4));
+    }
+    map.put(key, value, expiryMs);
     connection.writeSimpleString("OK");
   }
 
   private static void handleGet(RedisConnection connection, List<String> commandLine) {
     String key = commandLine.get(1);
-    String value = map.get(key);
-    connection.writeBulkString(value);
+    Optional<String> valueOptional = map.get(key);
+    if (valueOptional.isPresent()) {
+      connection.writeBulkString(valueOptional.get());
+    } else {
+      connection.writeNullBulkString();
+    }
   }
 
   private static void handleClientSocket(Socket socket) {
@@ -130,6 +138,47 @@ public class Main {
 
     public void writeBulkString(String bulkString) {
       write("$" + bulkString.length() + CRLF + bulkString + CRLF);
+    }
+
+    public void writeNullBulkString() {
+      write("$-1" + CRLF);
+    }
+
+  }
+
+  private static class ExpiringMap {
+
+    private final ConcurrentMap<String, Entry> map = new ConcurrentHashMap<>();
+
+    public void put(String key, String value, /*@Nullable*/ Long expiryMs) {
+      Entry entry = new Entry();
+      entry.value = value;
+      if (expiryMs != null) {
+        entry.expiringTimeMs = Optional.of(System.currentTimeMillis() + expiryMs);
+      } else {
+        entry.expiringTimeMs = Optional.empty();
+      }
+      map.put(key, entry);
+    }
+
+    public Optional<String> get(String key) {
+      Entry entry = map.get(key);
+      if (entry == null) {
+        return Optional.empty();
+      }
+
+      boolean expired = entry.expiringTimeMs.filter(x -> x <= System.currentTimeMillis()).isPresent();
+      if (expired) {
+        map.remove(key);
+        return Optional.empty();
+      } else {
+        return Optional.of(entry.value);
+      }
+    }
+
+    private static class Entry {
+      String value;
+      Optional<Long> expiringTimeMs;
     }
 
   }
