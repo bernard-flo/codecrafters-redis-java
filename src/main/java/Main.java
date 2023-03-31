@@ -8,8 +8,12 @@ import java.util.concurrent.CompletableFuture;
 public class Main {
 
 
-  private static void handlePing(RedisConnection connection, String line) throws IOException {
+  private static void handlePing(RedisConnection connection) throws IOException {
     connection.writeSimpleString("PONG");
+  }
+
+  private static void handleEcho(RedisConnection connection, String arg) throws IOException {
+    connection.writeBulkString(arg);
   }
 
   private static void handleClientSocket(Socket socket) {
@@ -21,7 +25,11 @@ public class Main {
         String line = scanner.nextLine();
         System.out.println("line: " + line);
         if (line.startsWith("ping")) {
-          handlePing(connection, line);
+          handlePing(connection);
+        } else if (line.startsWith("ECHO")) {
+          scanner.nextLine();
+          String arg = scanner.nextLine();
+          handleEcho(connection, arg);
         } else if (line.startsWith("DOCS")) {
           connection.writeSimpleString("");
         }
@@ -62,15 +70,25 @@ public class Main {
   }
 
   private static class RedisConnection {
+    private static final String CRLF = "\r\n";
+
     private final OutputStream outputStream;
     public RedisConnection(OutputStream outputStream) {
       this.outputStream = outputStream;
     }
 
-    public void writeSimpleString(String simpleString) throws IOException {
-      String line = "+" + simpleString + "\r\n";
+    public void write(String line) throws IOException {
       outputStream.write(line.getBytes());
     }
+
+    public void writeSimpleString(String simpleString) throws IOException {
+      write("+" + simpleString + CRLF);
+    }
+
+    public void writeBulkString(String bulkString) throws IOException {
+      write("$" + bulkString.length() + CRLF + bulkString + CRLF);
+    }
+
   }
 
 }
