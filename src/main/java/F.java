@@ -5,6 +5,16 @@ import java.util.function.Function;
 public enum F {
     ;
 
+    public static <T> Runnable wrapEx(ThrowingRunnable<T> throwingRunnable) {
+        return () -> {
+            try {
+                throwingRunnable.run();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+
     public static <T> Consumer<T> wrapEx(ThrowingConsumer<T> throwingConsumer) {
         return (t) -> {
             try {
@@ -36,6 +46,11 @@ public enum F {
         return (u) -> {
             wrapEx(throwingBiConsumer).accept(t, u);
         };
+    }
+
+    @FunctionalInterface
+    public interface ThrowingRunnable<T> {
+        void run() throws Exception;
     }
 
     @FunctionalInterface

@@ -1,7 +1,7 @@
 public class Main {
 
     public static void main(String[] args) throws Exception {
-        new NioRedis().run();
+        new ThreadPoolRedis().run();
     }
 
 }
